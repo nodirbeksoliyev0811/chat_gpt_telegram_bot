@@ -464,21 +464,18 @@ async def message_handle(update: Update, context: CallbackContext, message=None,
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     async with user_semaphores[user_id]:
-        if current_model == "gpt-4-vision-preview" or current_model == "gpt-4o" or update.message.photo is not None and len(update.message.photo) > 0:
-
-            logger.error(current_model)
-            # What is this? ^^^
-
-            if current_model != "gpt-4o" and current_model != "gpt-4-vision-preview":
+        # Check if we need vision capabilities
+        if (current_model in ["gpt-4-vision-preview", "gpt-4o"]) or (update.message.photo is not None and len(update.message.photo) > 0):
+            # Auto-switch to gpt-4o for images if needed
+            if current_model not in ["gpt-4o", "gpt-4-vision-preview"]:
                 current_model = "gpt-4o"
                 db.set_user_attribute(user_id, "current_model", "gpt-4o")
+            
             task = asyncio.create_task(
                 _vision_message_handle_fn(update, context, use_new_dialog_timeout=use_new_dialog_timeout)
             )
         else:
-            task = asyncio.create_task(
-                message_handle_fn()
-            )            
+            task = asyncio.create_task(message_handle_fn())            
 
         user_tasks[user_id] = task
 
