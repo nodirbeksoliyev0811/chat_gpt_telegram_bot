@@ -1,4 +1,4 @@
-allowed_telegram_usernames: ["@nodirbeksoliyev0811", 2620036832]
+allowed_telegram_usernames: []
 openai_api_base: null
 new_dialog_timeout: 600
 return_n_generated_images: 1
