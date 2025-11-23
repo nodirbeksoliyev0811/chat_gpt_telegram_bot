@@ -12,7 +12,7 @@ services:
     container_name: chat_gpt_telegram_bot
     command: python3 bot/bot.py
     env_file:
-      - config/config.env
+      - .env
     restart: always
     build:
       context: "."
