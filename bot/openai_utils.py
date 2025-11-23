@@ -250,15 +250,26 @@ class ChatGPT:
     def _encode_image(self, image_buffer: BytesIO) -> bytes:
         return base64.b64encode(image_buffer.read()).decode("utf-8")
 
-    def _generate_prompt_messages(self, message, dialog_messages, chat_mode, image_buffer: BytesIO = None):
+    def _generate_prompt_messages(self, message, dialog_messages, chat_mode, image_buffer: BytesIO = None): 
         prompt = config.chat_modes[chat_mode]["prompt_start"]
 
         messages = [{"role": "system", "content": prompt}]
         
         for dialog_message in dialog_messages:
-            messages.append({"role": "user", "content": dialog_message["user"]})
+            if isinstance(dialog_message["user"], str):
+                user_content = dialog_message["user"]
+            elif isinstance(dialog_message["user"], list):
+                user_content = ""
+                for item in dialog_message["user"]:
+                    if item.get("type") == "text":
+                        user_content = item.get("text", "")
+                        break
+            else:
+                user_content = str(dialog_message["user"])
+                
+            messages.append({"role": "user", "content": user_content})
             messages.append({"role": "assistant", "content": dialog_message["bot"]})
-                    
+                        
         if image_buffer is not None:
             messages.append(
                 {
@@ -270,21 +281,19 @@ class ChatGPT:
                         },
                         {
                             "type": "image_url",
-                            "image_url" : {
-                              
+                            "image_url": {
                                 "url": f"data:image/jpeg;base64,{self._encode_image(image_buffer)}",
-                                "detail":"high"
+                                "detail": "high"
                             }
                         }
                     ]
                 }
-                
             )
         else:
             messages.append({"role": "user", "content": message})
 
         return messages
-
+    
     def _postprocess_answer(self, answer):
         answer = answer.strip()
         return answer
@@ -331,6 +340,56 @@ class ChatGPT:
                     elif message["type"] == "image_url":
                         pass
 
+
+        n_input_tokens += 2
+
+        # output
+        n_output_tokens = 1 + len(encoding.encode(answer))
+
+        return n_input_tokens, n_output_tokens
+
+    def _count_tokens_from_messages(self, messages, answer, model="gpt-3.5-turbo"):
+        encoding = tiktoken.encoding_for_model(model)
+
+        if model == "gpt-3.5-turbo-16k":
+            tokens_per_message = 4
+            tokens_per_name = -1
+        elif model == "gpt-3.5-turbo":
+            tokens_per_message = 4
+            tokens_per_name = -1
+        elif model == "gpt-4":
+            tokens_per_message = 3
+            tokens_per_name = 1
+        elif model == "gpt-4-1106-preview":
+            tokens_per_message = 3
+            tokens_per_name = 1
+        elif model == "gpt-4-vision-preview":
+            tokens_per_message = 3
+            tokens_per_name = 1
+        elif model == "gpt-4o":
+            tokens_per_message = 3
+            tokens_per_name = 1
+        else:
+            raise ValueError(f"Unknown model: {model}")
+
+        # input
+        n_input_tokens = 0
+        for message in messages:
+            n_input_tokens += tokens_per_message
+            
+            content = message.get("content", "")
+            
+            # Agar content list bo'lsa (vision message)
+            if isinstance(content, list):
+                for sub_message in content:
+                    if sub_message.get("type") == "text":
+                        n_input_tokens += len(encoding.encode(sub_message.get("text", "")))
+                    elif sub_message.get("type") == "image_url":
+                        # Rasmlar uchun taxminiy 85 token
+                        n_input_tokens += 85
+            # Agar content string bo'lsa
+            elif isinstance(content, str):
+                n_input_tokens += len(encoding.encode(content))
 
         n_input_tokens += 2
 
