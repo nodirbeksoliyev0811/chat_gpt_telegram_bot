@@ -1,4 +1,4 @@
-available_text_models: ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4-1106-preview", "gpt-4-vision-preview", "gpt-4", "text-davinci-003", "gpt-4o"]
+available_text_models: ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4-1106-preview", "gpt-4-vision-preview", "gpt-4", "davinci", "gpt-4o"]
 
 info:
   gpt-3.5-turbo:
@@ -79,7 +79,7 @@ info:
       Fast: 2
       Cheap: 2
 
-  text-davinci-003:
+  davinci:
     type: completion
     name: GPT-3.5
     description: GPT-3.5 eski model. Aslida, undan foydalanishga <b>hech qanday sabab yo'q</b>, chunki u ChatGPTga qaraganda qimmat va sekin, lekin xuddi shuncha aqlli.
