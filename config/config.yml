@@ -1,4 +1,7 @@
-allowed_telegram_usernames: []
+allowed_telegram_usernames: 
+  - @flutter_coder
+  - @nodirbeksoliyev0811
+  - 5803123129
 openai_api_base: null
 new_dialog_timeout: 600
 return_n_generated_images: 1
