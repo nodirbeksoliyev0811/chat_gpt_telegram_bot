@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 config_dir = Path(__file__).parent.parent.resolve() / "config"
 
 # Load .env
-load_dotenv(config_dir / "config.env")
+load_dotenv()
 
 # Load YAML configs
 with open(config_dir / "config.yml", 'r') as f:
