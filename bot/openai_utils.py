@@ -16,14 +16,30 @@ logger = logging.getLogger(__name__)
 
 OPENAI_COMPLETION_OPTIONS = {
     "temperature": 0.7,
-    "max_tokens": 2048,
+    "max_completion_tokens": 2048,
     "top_p": 1,
     "frequency_penalty": 0.1,
     "presence_penalty": 0.1,
 }
 
 
+
 class ChatGPT:
+    def _get_model_params(self):
+        params = {
+            "temperature": OPENAI_COMPLETION_OPTIONS["temperature"],
+            "top_p": OPENAI_COMPLETION_OPTIONS["top_p"],
+            "frequency_penalty": OPENAI_COMPLETION_OPTIONS["frequency_penalty"],
+            "presence_penalty": OPENAI_COMPLETION_OPTIONS["presence_penalty"],
+        }
+
+        if self.model.startswith("gpt-5") or self.model.startswith("gpt-4o") or self.model.startswith("gpt-4"):
+            params["max_completion_tokens"] = OPENAI_COMPLETION_OPTIONS["max_completion_tokens"]
+        else:
+            params["max_tokens"] = OPENAI_COMPLETION_OPTIONS["max_completion_tokens"]
+
+        return params
+    
     def __init__(self, model="gpt-3.5-turbo"):
         assert model in {
             "gpt-5",
@@ -51,7 +67,7 @@ class ChatGPT:
                 response = await client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    **OPENAI_COMPLETION_OPTIONS
+                    **self._get_model_params()
                 )
                 
                 answer = response.choices[0].message.content
@@ -86,7 +102,7 @@ class ChatGPT:
                     model=self.model,
                     messages=messages,
                     stream=True,
-                    **OPENAI_COMPLETION_OPTIONS
+                    **self._get_model_params()
                 )
 
                 answer = ""
@@ -132,7 +148,7 @@ class ChatGPT:
                 response = await client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    **OPENAI_COMPLETION_OPTIONS
+                    **self._get_model_params()
                 )
                 
                 answer = response.choices[0].message.content
@@ -172,7 +188,7 @@ class ChatGPT:
                     model=self.model,
                     messages=messages,
                     stream=True,
-                    **OPENAI_COMPLETION_OPTIONS
+                    **self._get_model_params()
                 )
 
                 answer = ""
