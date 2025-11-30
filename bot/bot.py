@@ -43,7 +43,7 @@ db = database.Database()
 bot = Bot(
     token=config.telegram_token, 
     default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    session=AiohttpSession(timeout=ClientTimeout(total=60, connect=30))
+    session=AiohttpSession(timeout=ClientTimeout(total=60, connect=30,sock_read=30))
 )
 
 storage = MemoryStorage()
@@ -796,7 +796,7 @@ async def main():
         await dp.start_polling(
             bot, 
             allowed_updates=dp.resolve_used_update_types(),
-            polling_timeout=30,
+            polling_timeout=20,
             handle_signals=True,
             drop_pending_updates=True,
             backoff_config=BackoffConfig(
