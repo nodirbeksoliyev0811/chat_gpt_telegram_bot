@@ -552,28 +552,33 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             logger.error(traceback.format_exc())
-            await placeholder.delete()
             await message.answer("❌ Xatolik yuz berdi")
 
     async with user_locks[user_id]:
-        # Vision check
-        if message.photo:
-            if current_model not in ["gpt-4o", "gpt-4-vision-preview"]:
-                db.set_user_attribute(user_id, "current_model", "gpt-4o")
-                current_model = "gpt-4o"
+        try:
+            if message.photo:
+                if current_model not in ["gpt-4o", "gpt-4-vision-preview"]:
+                    db.set_user_attribute(user_id, "current_model", "gpt-4o")
+                    current_model = "gpt-4o"
                 task = asyncio.create_task(process_vision_message(message, use_new_dialog_timeout))
             else:
                 task = asyncio.create_task(message_task())
 
-        user_tasks[user_id] = task
-        try:
-            await task
-        except asyncio.CancelledError:
-            await message.answer("✅ Bekor qilindi")
-        finally:
+            user_tasks[user_id] = task
+            
+            try:
+                await task
+            except asyncio.CancelledError:
+                await message.answer("✅ Bekor qilindi")
+            finally:
+                if user_id in user_tasks:
+                    del user_tasks[user_id]
+                    
+        except Exception as e:
+            logger.error(f"Error in process_message: {e}")
+            logger.error(traceback.format_exc())
             if user_id in user_tasks:
                 del user_tasks[user_id]
-
 
 @router.message(F.text & ~F.text.startswith('/'))
 async def text_message_handler(message: Message):
