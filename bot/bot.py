@@ -21,6 +21,7 @@ from aiogram.enums import ParseMode, ChatAction
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiohttp import ClientTimeout
+from aiogram.utils.backoff import BackoffConfig
 
 import config
 import database
@@ -798,7 +799,12 @@ async def main():
             polling_timeout=30,
             handle_signals=True,
             drop_pending_updates=True,
-            backoff_config={"max_delay": 60} 
+            backoff_config=BackoffConfig(
+                min_delay=1.0,
+                max_delay=60.0,
+                factor=1.3,
+                jitter=0.1
+            )
         )
     except Exception as e:
         logger.error(f"Fatal error in polling: {e}", exc_info=True)
