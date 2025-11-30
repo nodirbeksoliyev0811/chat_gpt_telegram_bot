@@ -19,8 +19,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.enums import ParseMode, ChatAction
 from aiogram.client.default import DefaultBotProperties
-from aiogram.client.session.aiohttp import AiohttpSession
-from aiohttp import ClientTimeout
 from aiogram.utils.backoff import BackoffConfig
 
 import config
@@ -43,7 +41,6 @@ db = database.Database()
 bot = Bot(
     token=config.telegram_token, 
     default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    session=AiohttpSession(timeout=ClientTimeout(total=60, connect=30,sock_read=30))
 )
 
 storage = MemoryStorage()
