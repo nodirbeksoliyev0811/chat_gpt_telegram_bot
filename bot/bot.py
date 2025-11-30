@@ -111,8 +111,8 @@ async def start_handler(message: Message):
     db.start_new_dialog(user_id)
 
     await message.answer(
-        f"👋 <b>Assalomu alaykum, {message.from_user.full_name}!</b>"
-        "Men <b>ChatGPT Bot</b>man. Sizga turli mavzularda yordam bera olaman:"
+        f"👋 <b>Assalomu alaykum, {message.from_user.full_name}!</b>\n"
+        "Men <b>ChatGPT Bot</b>man. Sizga turli mavzularda yordam bera olaman:\n\n"
         "✅ Savollaringizga javob beraman\n"
         "✅ Kod yozishda yordam beraman\n"
         "✅ Matnlarni tahrirlab, xatoliklardan tozalayman\n"

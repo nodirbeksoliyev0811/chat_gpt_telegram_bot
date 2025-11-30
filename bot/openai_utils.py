@@ -14,13 +14,12 @@ client = AsyncOpenAI(
 
 logger = logging.getLogger(__name__)
 
-
 OPENAI_COMPLETION_OPTIONS = {
-    "temperature": 0.2,        # mantiqiy, aniq, professional javoblar uchun
-    "max_tokens": 2048,        # uzilmasdan to‘liq javob qaytaradi
-    "top_p": 1,                # default — eng barqaror
-    "frequency_penalty": 0.1,  # takrorlanishni biroz kamaytiradi
-    "presence_penalty": 0.1,   # yangi fikrlarni biroz qo‘shadi
+    "temperature": 0.7,
+    "max_tokens": 2048,
+    "top_p": 1,
+    "frequency_penalty": 0.1,
+    "presence_penalty": 0.1,
 }
 
 
@@ -29,7 +28,7 @@ class ChatGPT:
         assert model in {
             "gpt-5",
             "gpt-4-vision-preview", 
-            "gpt-4-1106-preview",
+            "gpt-4-turbo-preview",
             "gpt-4", 
             "gpt-4o",
             "gpt-4o-mini",

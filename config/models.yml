@@ -1,7 +1,7 @@
 available_text_models: [
   "gpt-5",
   "gpt-4-vision-preview", 
-  "gpt-4-1106-preview",
+  "gpt-4-turbo-preview",
   "gpt-4", 
   "gpt-4o",
   "gpt-4o-mini",
@@ -49,7 +49,7 @@ info:
       Tezkor: 2
       Arzon: 2
 
-  gpt-4-1106-preview:
+  gpt-4-turbo-preview:
     type: chat_completion
     name: GPT-4 Turbo
     description: GPT-4 Turbo GPT-4ning <b>tezroq</b> va <b>arzonroq</b> versiyasi. U GPT-4 kabi aqlli, yaxshiroq tushunish, ko‘proq analitik qobiliyat, noaniq savollarni aniqroq hal qiladi.
