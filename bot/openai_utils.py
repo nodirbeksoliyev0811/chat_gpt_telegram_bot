@@ -28,8 +28,7 @@ class ChatGPT:
     def __init__(self, model="gpt-3.5-turbo"):
         assert model in {
             "davinci", "gpt-3.5-turbo-16k", "gpt-3.5-turbo", 
-            "gpt-4", "gpt-4o", "gpt-4-1106-preview", "gpt-4-vision-preview",
-            "gpt-4o-mini"
+            "gpt-4", "gpt-4o", "gpt-4-1106-preview", "gpt-4-vision-preview"
         }, f"Unknown model: {model}"
         self.model = model
 
@@ -195,7 +194,10 @@ class ChatGPT:
         yield "finished", answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed
 
     def _encode_image(self, image_buffer: BytesIO) -> str:
-        return base64.b64encode(image_buffer.read()).decode("utf-8")
+        image_buffer.seek(0)
+        encoded = base64.b64encode(image_buffer.read()).decode("utf-8")
+        image_buffer.seek(0)
+        return encoded
 
     def _generate_prompt_messages(self, message, dialog_messages, chat_mode, image_buffer: BytesIO = None):
         prompt = config.chat_modes[chat_mode]["prompt_start"]
@@ -210,6 +212,8 @@ class ChatGPT:
                     if item.get("type") == "text":
                         user_content = item.get("text", "")
                         break
+                if not user_content:
+                    user_content = "[Image message]"
             else:
                 user_content = str(dialog_message["user"])
                 
@@ -256,7 +260,8 @@ class ChatGPT:
                     if sub_message.get("type") == "text":
                         n_input_tokens += len(encoding.encode(sub_message.get("text", "")))
                     elif sub_message.get("type") == "image_url":
-                        n_input_tokens += 85
+                        detail = sub_message.get("image_url", {}).get("detail", "low")
+                        n_input_tokens += 765 if detail == "high" else 85
             elif isinstance(content, str):
                 n_input_tokens += len(encoding.encode(content))
 

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import traceback
 from datetime import datetime
+from decimal import Decimal
 from io import BytesIO
 import base64
 
@@ -18,6 +19,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.enums import ParseMode, ChatAction
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiohttp import ClientTimeout
 
 import config
 import database
@@ -36,7 +39,11 @@ logger = logging.getLogger(__name__)
 db = database.Database()
 
 # Bot & Dispatcher
-bot = Bot(token=config.telegram_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+bot = Bot(
+    token=config.telegram_token, 
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    session=AiohttpSession(timeout=ClientTimeout(total=60, connect=30))
+)
 
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -106,7 +113,10 @@ async def register_user_if_not_exists(message: Message):
 
         # Backward compatibility
         n_used_tokens = db.get_user_attribute(user.id, "n_used_tokens")
-        if isinstance(n_used_tokens, (int, float)):
+        if n_used_tokens is None:
+            n_used_tokens = {}
+            db.set_user_attribute(user.id, "n_used_tokens", n_used_tokens)
+        elif isinstance(n_used_tokens, (int, float)):
             new_n_used_tokens = {
                 "gpt-3.5-turbo": {
                     "n_input_tokens": 0,
@@ -173,6 +183,8 @@ async def new_dialog_handler(message: Message):
     await register_user_if_not_exists(message)
     user_id = message.from_user.id
 
+    if user_id not in user_locks:
+        user_locks[user_id] = asyncio.Lock()
     if user_locks[user_id].locked():
         await message.answer("⏳ Iltimos, oldingi xabarga javobni kuting\nYoki /cancel bilan bekor qiling")
         return
@@ -198,6 +210,10 @@ async def cancel_handler(message: Message):
 
     if user_id in user_tasks:
         user_tasks[user_id].cancel()
+        try:
+            await user_tasks[user_id]
+        except asyncio.CancelledError:
+            pass
         await message.answer("✅ Bekor qilindi")
     else:
         await message.answer("❌ Bekor qilinadigan hech narsa yo'q")
@@ -212,6 +228,8 @@ async def retry_handler(message: Message):
     await register_user_if_not_exists(message)
     user_id = message.from_user.id
 
+    if user_id not in user_locks:
+        user_locks[user_id] = asyncio.Lock()
     if user_locks[user_id].locked():
         await message.answer("⏳ Iltimos, oldingi xabarga javobni kuting")
         return
@@ -414,8 +432,8 @@ async def balance_handler(message: Message):
         n_out = n_used_tokens_dict[model_key]["n_output_tokens"]
         total_tokens += n_in + n_out
 
-        price_in = config.models["info"][model_key]["price_per_1000_input_tokens"] * (n_in / 1000)
-        price_out = config.models["info"][model_key]["price_per_1000_output_tokens"] * (n_out / 1000)
+        price_in = Decimal(str(config.models["info"][model_key]["price_per_1000_input_tokens"] * (n_in / 1000)))
+        price_out = Decimal(str(config.models["info"][model_key]["price_per_1000_output_tokens"] * (n_out / 1000)))
         total_spent += price_in + price_out
 
         details += f"• {model_key}: <b>${price_in + price_out:.3f}</b> / {n_in + n_out} token\n"
@@ -447,6 +465,8 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
     await register_user_if_not_exists(message)
     user_id = message.from_user.id
 
+    if user_id not in user_locks:
+        user_locks[user_id] = asyncio.Lock()
     if user_locks[user_id].locked():
         await message.answer("⏳ Iltimos, oldingi xabarga javobni kuting")
         return
@@ -455,6 +475,7 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
     
     # Artist mode - rasm yaratish
     if chat_mode == "artist":
+        await message.answer("🎨 Rasm yaratilmoqda...")
         await generate_image(message, text or message.text)
         return
 
@@ -533,16 +554,18 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
         except Exception as e:
             logger.error(f"Error processing message: {e}")
             logger.error(traceback.format_exc())
+            await placeholder.delete()
             await message.answer("❌ Xatolik yuz berdi")
 
     async with user_locks[user_id]:
         # Vision check
-        if (current_model in ["gpt-4-vision-preview", "gpt-4o"]) and message.photo:
+        if message.photo:
             if current_model not in ["gpt-4o", "gpt-4-vision-preview"]:
                 db.set_user_attribute(user_id, "current_model", "gpt-4o")
-            task = asyncio.create_task(process_vision_message(message, use_new_dialog_timeout))
-        else:
-            task = asyncio.create_task(message_task())
+                current_model = "gpt-4o"
+                task = asyncio.create_task(process_vision_message(message, use_new_dialog_timeout))
+            else:
+                task = asyncio.create_task(message_task())
 
         user_tasks[user_id] = task
         try:
@@ -634,6 +657,7 @@ async def process_vision_message(message: Message, use_new_dialog_timeout: bool 
 
         # Save
         if buf:
+            buf.seek(0)
             base_img = base64.b64encode(buf.getvalue()).decode("utf-8")
             new_msg = {
                 "user": [{"type": "text", "text": text}, {"type": "image", "image": base_img}],
@@ -690,7 +714,8 @@ async def voice_handler(message: Message):
 
     # Update stats
     current = db.get_user_attribute(user_id, "n_transcribed_seconds")
-    db.set_user_attribute(user_id, "n_transcribed_seconds", voice.duration + current)
+    duration = voice.duration or 0
+    db.set_user_attribute(user_id, "n_transcribed_seconds", duration + current)
 
     # Process
     await process_message(message, text=transcribed)
@@ -767,7 +792,16 @@ async def main():
     
     # Start polling
     try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        await dp.start_polling(
+            bot, 
+            allowed_updates=dp.resolve_used_update_types(),
+            polling_timeout=30,
+            handle_signals=True,
+            drop_pending_updates=True,
+            backoff_config={"max_delay": 60} 
+        )
+    except Exception as e:
+        logger.error(f"Fatal error in polling: {e}", exc_info=True)
     finally:
         await bot.session.close()
 

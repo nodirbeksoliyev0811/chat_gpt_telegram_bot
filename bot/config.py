@@ -9,8 +9,13 @@ config_dir = Path(__file__).parent.parent.resolve() / "config"
 load_dotenv(".env")
 
 # Load YAML configs
-with open(config_dir / "config.yml", 'r') as f:
-    config_yaml = yaml.safe_load(f)
+try:
+    with open(config_dir / "config.yml", 'r') as f:
+        config_yaml = yaml.safe_load(f)
+except FileNotFoundError:
+    raise ValueError(f"Config file not found: {config_dir / 'config.yml'}")
+except yaml.YAMLError as e:
+    raise ValueError(f"Invalid YAML in config.yml: {e}")
 
 # Telegram & OpenAI
 telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
