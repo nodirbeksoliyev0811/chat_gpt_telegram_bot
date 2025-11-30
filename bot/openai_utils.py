@@ -16,19 +16,25 @@ logger = logging.getLogger(__name__)
 
 
 OPENAI_COMPLETION_OPTIONS = {
-    "temperature": 0.7,
-    "max_tokens": 1000,
-    "top_p": 1,
-    "frequency_penalty": 0,
-    "presence_penalty": 0,
+    "temperature": 0.2,        # mantiqiy, aniq, professional javoblar uchun
+    "max_tokens": 2048,        # uzilmasdan to‘liq javob qaytaradi
+    "top_p": 1,                # default — eng barqaror
+    "frequency_penalty": 0.1,  # takrorlanishni biroz kamaytiradi
+    "presence_penalty": 0.1,   # yangi fikrlarni biroz qo‘shadi
 }
 
 
 class ChatGPT:
     def __init__(self, model="gpt-3.5-turbo"):
         assert model in {
-            "gpt-3.5-turbo-16k", "gpt-3.5-turbo", "gpt-4o-mini",
-            "gpt-4", "gpt-4o", "gpt-4-1106-preview", "gpt-4-vision-preview"
+            "gpt-5",
+            "gpt-4-vision-preview", 
+            "gpt-4-1106-preview",
+            "gpt-4", 
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-3.5-turbo-16k",
+            "gpt-3.5-turbo", 
         }, f"Unknown model: {model}"
         self.model = model
 
@@ -293,7 +299,6 @@ async def transcribe_audio(audio_file) -> str:
 
 
 async def generate_images(prompt, n_images=1, size="512x512"):
-    """Rasm yaratish"""
     try:
         response = await client.images.generate(
             model="dall-e-2",

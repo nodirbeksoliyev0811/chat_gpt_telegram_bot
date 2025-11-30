@@ -2,7 +2,6 @@ import asyncio
 import logging
 import traceback
 from datetime import datetime
-from decimal import Decimal
 from io import BytesIO
 import base64
 
@@ -15,7 +14,6 @@ from aiogram.types import (
     BotCommand
 )
 from aiogram.filters import Command, CommandStart
-from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.enums import ParseMode, ChatAction
 from aiogram.client.default import DefaultBotProperties
@@ -28,63 +26,21 @@ import openai_utils
 # ==========================================
 # SETUP
 # ==========================================
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format='%(levelname)s - %(message)s',level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database
 db = database.Database()
-
-# Bot & Dispatcher
-bot = Bot(
-    token=config.telegram_token, 
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-)
-
+bot = Bot(token=config.telegram_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
-
-# User locks (bir vaqtda bitta so'rov)
 user_locks = {}
 user_tasks = {}
-
-# ==========================================
-# KONSTANTALAR
-# ==========================================
-HELP_MESSAGE = """<b>📚 Buyruqlar:</b>
-
-⚪ /retry – Oxirgi javobni qayta yaratish
-⚪ /new – Yangi suhbat boshlash
-⚪ /mode – Suhbat rejimini tanlash
-⚪ /settings – Sozlamalar
-⚪ /balance – Balans
-⚪ /help – Yordam
-
-<b>🎨 Rasm yaratish:</b> <b>👩‍🎨 Rassom</b> rejimida matn yozing!
-<b>🎤 Ovozli xabar:</b> Ovozli xabar yuborsangiz, matn ko'rinishida o'giriladi
-"""
-
-START_MESSAGE = """👋 <b>Assalomu alaykum, {name}!</b>
-
-Men <b>ChatGPT Telegram Bot</b>man. Sizga turli mavzularda yordam bera olaman:
-
-✅ Savollaringizga javob beraman
-✅ Kod yozishda yordam beraman  
-✅ Matnlarni tahrirlash va yaxshilayman
-✅ Ingliz tilini o'rganishda yordam beraman
-✅ Va boshqa ko'p narsalar...
-
-Iltimos, suhbat rejimini tanlang 👇"""
-
 
 # ==========================================
 # HELPER FUNCTIONS
 # ==========================================
 async def register_user_if_not_exists(message: Message):
-    """Foydalanuvchini ro'yxatdan o'tkazish"""
     try:
         user = message.from_user
         chat_id = message.chat.id
@@ -144,7 +100,6 @@ def is_user_allowed(user_id: int) -> bool:
 # ==========================================
 @router.message(CommandStart())
 async def start_handler(message: Message):
-    """Start buyrug'i"""
     if not is_user_allowed(message.from_user.id):
         await message.answer("❌ Sizda botdan foydalanish huquqi yo'q.")
         return
@@ -155,8 +110,15 @@ async def start_handler(message: Message):
     db.set_user_attribute(user_id, "last_interaction", datetime.now())
     db.start_new_dialog(user_id)
 
-    text = START_MESSAGE.format(name=message.from_user.full_name)
-    await message.answer(text)
+    await message.answer(
+        f"👋 <b>Assalomu alaykum, {message.from_user.full_name}!</b>"
+        "Men <b>ChatGPT Bot</b>man. Sizga turli mavzularda yordam bera olaman:"
+        "✅ Savollaringizga javob beraman\n"
+        "✅ Kod yozishda yordam beraman\n"
+        "✅ Matnlarni tahrirlab, xatoliklardan tozalayman\n"
+        "✅ Ingliz tilini o'rganishda yordam beraman\n"
+        "✅ Va boshqa ko'p narsalar..." 
+    )
     
     # Chat rejimlari
     await show_chat_modes(message)
@@ -164,17 +126,27 @@ async def start_handler(message: Message):
 
 @router.message(Command("help"))
 async def help_handler(message: Message):
-    """Help buyrug'i"""
     if not is_user_allowed(message.from_user.id):
         return
 
     await register_user_if_not_exists(message)
-    await message.answer(HELP_MESSAGE)
+    await message.answer(
+        """<b>📚 Buyruqlar:</b>
+
+        /retry – Oxirgi javobni qayta yaratish
+        /new – Yangi suhbat boshlash
+        /mode – Suhbat rejimini tanlash
+        /settings – Sozlamalar
+        /balance – Balans
+        /help – Yordam
+
+        <b>🎨 Rasm yaratish:</b> <b>👩‍🎨 Rassom</b> rejimini!
+        <b>🎤 Ovozli xabar:</b> Ovozli xabar yuborsangiz, matn ko'rinishiga o'giriladi.""",
+    )
 
 
 @router.message(Command("new"))
 async def new_dialog_handler(message: Message):
-    """Yangi suhbat"""
     if not is_user_allowed(message.from_user.id):
         return
 
@@ -199,7 +171,6 @@ async def new_dialog_handler(message: Message):
 
 @router.message(Command("cancel"))
 async def cancel_handler(message: Message):
-    """Bekor qilish"""
     if not is_user_allowed(message.from_user.id):
         return
 
@@ -219,7 +190,6 @@ async def cancel_handler(message: Message):
 
 @router.message(Command("retry"))
 async def retry_handler(message: Message):
-    """Qayta yaratish"""
     if not is_user_allowed(message.from_user.id):
         return
 
@@ -256,9 +226,8 @@ async def retry_handler(message: Message):
 # CHAT MODE HANDLERS
 # ==========================================
 def get_chat_mode_menu(page_index: int = 0):
-    """Suhbat rejimlari menyusi"""
     n_per_page = config.n_chat_modes_per_page
-    text = f"<b>🎭 Suhbat rejimini tanlang</b> ({len(config.chat_modes)} ta rejim):"
+    text = f"<b>🎭 Suhbat rejimini tanlang</b> ({len(config.chat_modes)} ta rejim mavjud):"
 
     chat_mode_keys = list(config.chat_modes.keys())
     page_keys = chat_mode_keys[page_index * n_per_page:(page_index + 1) * n_per_page]
@@ -275,9 +244,9 @@ def get_chat_mode_menu(page_index: int = 0):
 
         nav_buttons = []
         if not is_first:
-            nav_buttons.append(InlineKeyboardButton(text="⬅️", callback_data=f"modes:{page_index - 1}"))
+            nav_buttons.append(InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"modes:{page_index - 1}"))
         if not is_last:
-            nav_buttons.append(InlineKeyboardButton(text="➡️", callback_data=f"modes:{page_index + 1}"))
+            nav_buttons.append(InlineKeyboardButton(text="➡️ Keyingi", callback_data=f"modes:{page_index + 1}"))
         
         if nav_buttons:
             keyboard.append(nav_buttons)
@@ -286,14 +255,12 @@ def get_chat_mode_menu(page_index: int = 0):
 
 
 async def show_chat_modes(message: Message):
-    """Suhbat rejimlarini ko'rsatish"""
     text, markup = get_chat_mode_menu(0)
     await message.answer(text, reply_markup=markup)
 
 
 @router.message(Command("mode"))
 async def mode_handler(message: Message):
-    """Mode buyrug'i"""
     if not is_user_allowed(message.from_user.id):
         return
 
@@ -303,7 +270,6 @@ async def mode_handler(message: Message):
 
 @router.callback_query(F.data.startswith("modes:"))
 async def modes_pagination_callback(callback: CallbackQuery):
-    """Mode pagination"""
     await callback.answer()
     
     try:
@@ -316,7 +282,6 @@ async def modes_pagination_callback(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("mode:"))
 async def set_chat_mode_callback(callback: CallbackQuery):
-    """Suhbat rejimini o'rnatish"""
     await callback.answer()
     
     try:
@@ -330,8 +295,8 @@ async def set_chat_mode_callback(callback: CallbackQuery):
         db.set_user_attribute(user_id, "current_chat_mode", chat_mode)
         db.start_new_dialog(user_id)
 
-        welcome_text = f"✅ <b>{config.chat_modes[chat_mode]['name']}</b> rejimi tanlandi!\n\n"
-        welcome_text += config.chat_modes[chat_mode]['welcome_message']
+        # welcome_text = f"✅ <b>{config.chat_modes[chat_mode]['name']}</b> rejimi tanlandi!\n\n"
+        welcome_text = config.chat_modes[chat_mode]['welcome_message']
 
         await callback.message.answer(welcome_text)
         
@@ -343,13 +308,10 @@ async def set_chat_mode_callback(callback: CallbackQuery):
 # SETTINGS HANDLERS
 # ==========================================
 def get_settings_menu(user_id: int):
-    """Sozlamalar menyusi"""
     current_model = db.get_user_attribute(user_id, "current_model")
-    
     text = f"<b>⚙️ Sozlamalar</b>\n\n"
     text += f"<b>Joriy model:</b> {config.models['info'][current_model]['name']}\n\n"
     text += f"<i>{config.models['info'][current_model]['description']}</i>\n\n"
-
     score_dict = config.models["info"][current_model]["scores"]
     for score_key, score_value in score_dict.items():
         text += "🟢" * score_value + "⚪️" * (5 - score_value) + f" – {score_key}\n"
@@ -368,7 +330,6 @@ def get_settings_menu(user_id: int):
 
 @router.message(Command("settings"))
 async def settings_handler(message: Message):
-    """Settings buyrug'i"""
     if not is_user_allowed(message.from_user.id):
         return
 
@@ -381,9 +342,7 @@ async def settings_handler(message: Message):
 
 @router.callback_query(F.data.startswith("model:"))
 async def set_model_callback(callback: CallbackQuery):
-    """Modelni o'rnatish"""
     await callback.answer()
-    
     try:
         user_id = callback.from_user.id
         model_key = callback.data.split(":")[1]
@@ -407,7 +366,6 @@ async def set_model_callback(callback: CallbackQuery):
 # ==========================================
 @router.message(Command("balance"))
 async def balance_handler(message: Message):
-    """Balans"""
     if not is_user_allowed(message.from_user.id):
         return
 
@@ -430,8 +388,8 @@ async def balance_handler(message: Message):
         n_out = n_used_tokens_dict[model_key]["n_output_tokens"]
         total_tokens += n_in + n_out
 
-        price_in = Decimal(str(config.models["info"][model_key]["price_per_1000_input_tokens"] * (n_in / 1000)))
-        price_out = Decimal(str(config.models["info"][model_key]["price_per_1000_output_tokens"] * (n_out / 1000)))
+        price_in = config.models["info"][model_key]["price_per_1000_input_tokens"] * (n_in / 1000)
+        price_out = config.models["info"][model_key]["price_per_1000_output_tokens"] * (n_out / 1000)
         total_spent += price_in + price_out
 
         details += f"• {model_key}: <b>${price_in + price_out:.3f}</b> / {n_in + n_out} token\n"
@@ -459,7 +417,6 @@ async def balance_handler(message: Message):
 # MESSAGE HANDLER
 # ==========================================
 async def process_message(message: Message, text: str = None, use_new_dialog_timeout: bool = True):
-    """Xabarni qayta ishlash"""
     await register_user_if_not_exists(message)
     user_id = message.from_user.id
 
@@ -471,7 +428,6 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
 
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
     
-    # Artist mode - rasm yaratish
     if chat_mode == "artist":
         await message.answer("🎨 Rasm yaratilmoqda...")
         await generate_image(message, text or message.text)
@@ -480,7 +436,6 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
     current_model = db.get_user_attribute(user_id, "current_model")
 
     async def message_task():
-        # Timeout
         if use_new_dialog_timeout:
             last_interaction = db.get_user_attribute(user_id, "last_interaction")
             if (datetime.now() - last_interaction).seconds > config.new_dialog_timeout:
@@ -494,7 +449,6 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
         n_input_tokens, n_output_tokens = 0, 0
 
         try:
-            # Placeholder
             placeholder = await message.answer("✏️")
             await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
 
@@ -582,7 +536,6 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
 
 @router.message(F.text & ~F.text.startswith('/'))
 async def text_message_handler(message: Message):
-    """Oddiy matn xabarlari"""
     if not is_user_allowed(message.from_user.id):
         return
     await process_message(message)
@@ -592,12 +545,11 @@ async def text_message_handler(message: Message):
 # VISION HANDLER
 # ==========================================
 async def process_vision_message(message: Message, use_new_dialog_timeout: bool = True):
-    """Rasm bilan xabar"""
     user_id = message.from_user.id
     current_model = db.get_user_attribute(user_id, "current_model")
 
     if current_model not in ["gpt-4-vision-preview", "gpt-4o"]:
-        await message.answer("❌ Rasm faqat GPT-4 Vision/GPT-4o da qo'llab-quvvatlanadi\n/settings da o'zgartiring")
+        await message.answer("❌ Rasm faqat GPT-4 Vision/GPT-4o modellarda qo'llab-quvvatlanadi\n/settings da modelni o'zgartiring")
         return
 
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
@@ -623,7 +575,7 @@ async def process_vision_message(message: Message, use_new_dialog_timeout: bool 
 
     try:
         placeholder = await message.answer("🖼️ Rasmni tahlil qilyapman...")
-        text = message.caption or "Bu rasmda nima bor?"
+        text = message.caption or "Bu rasmni tahlil qil!"
 
         await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
 
@@ -684,7 +636,6 @@ async def process_vision_message(message: Message, use_new_dialog_timeout: bool 
 
 @router.message(F.photo)
 async def photo_handler(message: Message):
-    """Rasm handler"""
     if not is_user_allowed(message.from_user.id):
         return
     await register_user_if_not_exists(message)
@@ -758,7 +709,6 @@ async def generate_image(message: Message, prompt: str):
 # STARTUP
 # ==========================================
 async def set_commands():
-    """Buyruqlarni o'rnatish"""
     commands = [
         BotCommand(command="start", description="Botni boshlash"),
         BotCommand(command="new", description="Yangi suhbat"),
@@ -769,31 +719,10 @@ async def set_commands():
         BotCommand(command="help", description="Yordam"),
     ]
     await bot.set_my_commands(commands)
-    logger.info("✅ Commands registered")
-
 
 async def main():
-    """Asosiy funksiya"""
-    logger.info("="*50)
-    logger.info("🚀 CHATGPT TELEGRAM BOT (AIOGRAM 3.x)")
-    logger.info("="*50)
-    
-    # Register router
     dp.include_router(router)
-    
-    # Set commands
     await set_commands()
-    
-    # User filter
-    if config.allowed_telegram_usernames:
-        logger.info(f"📋 Ruxsat berilgan foydalanuvchilar: {config.allowed_telegram_usernames}")
-    else:
-        logger.info("📋 Barcha foydalanuvchilar ruxsat etilgan")
-    
-    logger.info("✅ Bot ishga tushmoqda...")
-    logger.info("="*50)
-    
-    # Start polling
     try:
         await dp.start_polling(
             bot, 
@@ -816,6 +745,7 @@ async def main():
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+        logger.info("✅ Bot ishga tushdi!")       
     except KeyboardInterrupt:
         logger.info("👋 Bot to'xtatildi (Ctrl+C)")
     except Exception as e:
