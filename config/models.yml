@@ -1,10 +1,18 @@
-available_text_models: ["gpt-3.5-turbo", "gpt-3.5-turbo-16k", "gpt-4-1106-preview", "gpt-4-vision-preview", "gpt-4", "davinci", "gpt-4o"]
+available_text_models: [
+  "gpt-3.5-turbo", 
+  "gpt-3.5-turbo-16k", 
+  "gpt-4-1106-preview", 
+  "gpt-4-vision-preview", 
+  "gpt-4", 
+  "gpt-4o",
+  "gpt-4o-mini"
+]
 
 info:
   gpt-3.5-turbo:
     type: chat_completion
-    name: ChatGPT
-    description: ChatGPT mashhur model. U <b>tez</b> va <b>arzon</b>. Har kuni ishlatiladigan vazifalar uchun ideal. Agar ba'zi vazifalarni bajara olmasa, <b>GPT-4</b>dan foydalaning.
+    name: GPT-3.5-Turbo
+    description: GPT-3.5-Turbo mashhur model. U <b>tez</b> va <b>arzon</b>. Har kuni ishlatiladigan vazifalar uchun ideal. Agar ba'zi vazifalarni bajara olmasa, <b>GPT-4</b>dan foydalaning.
 
     price_per_1000_input_tokens: 0.0015
     price_per_1000_output_tokens: 0.002
@@ -16,8 +24,8 @@ info:
 
   gpt-3.5-turbo-16k:
     type: chat_completion
-    name: GPT-16K
-    description: ChatGPT mashhur model. U <b>tez</b> va <b>arzon</b>. Har kuni ishlatiladigan vazifalar uchun ideal. Agar ba'zi vazifalarni bajara olmasa, <b>GPT-4</b>dan foydalaning.
+    name: GPT-3.5-Turbo-16k
+    description: GPT-3.5-Turbo-16K kontekst xotirasi, kamroq bo‘lishdan ko‘ra ko‘proq ma’lumotni bir so‘rovda berish imkoniyati mavjud.
 
     price_per_1000_input_tokens: 0.003
     price_per_1000_output_tokens: 0.004
@@ -30,7 +38,7 @@ info:
   gpt-4:
     type: chat_completion
     name: GPT-4
-    description: GPT-4 dunyodagi <b>eng aqlli</b> va ilg'or model. Lekin u ChatGPTga qaraganda sekinroq va kamroq tejamkor. <b>Murakkab</b> intellektual vazifalar uchun eng yaxshi tanlov.
+    description: GPT-4 dunyodagi <b>eng aqlli</b> va ilg'or model. Lekin u GPT-3.5-Turbo ga qaraganda sekinroq va kamroq tejamkor. <b>Murakkab</b> intellektual vazifalar uchun eng yaxshi tanlov.
 
     price_per_1000_input_tokens: 0.03
     price_per_1000_output_tokens: 0.06
@@ -43,7 +51,7 @@ info:
   gpt-4-1106-preview:
     type: chat_completion
     name: GPT-4 Turbo
-    description: GPT-4 Turbo GPT-4ning <b>tezroq</b> va <b>arzonroq</b> versiyasi. U GPT-4 kabi aqlli, shuning uchun GPT-4 o'rniga undan foydalaning.
+    description: GPT-4 Turbo GPT-4ning <b>tezroq</b> va <b>arzonroq</b> versiyasi. U GPT-4 kabi aqlli, yaxshiroq tushunish, ko‘proq analitik qobiliyat, noaniq savollarni aniqroq hal qiladi.
 
     price_per_1000_input_tokens: 0.01
     price_per_1000_output_tokens: 0.03
@@ -56,7 +64,7 @@ info:
   gpt-4-vision-preview:
     type: chat_completion
     name: GPT-4 Vision
-    description: Rasmlarni <b>tushunish</b> qobiliyatiga ega, GPT-4 Turbo funksiyalarining barchasini qo'shadi.
+    description: Rasmlarni <b>tushunish</b> qobiliyatiga ega, GPT-4 Turbo funksiyalarining barchasini ishlatadi.
 
     price_per_1000_input_tokens: 0.01
     price_per_1000_output_tokens: 0.03
@@ -78,6 +86,19 @@ info:
       Smart: 5
       Fast: 2
       Cheap: 2
+
+  gpt-4o-mini:
+    type: chat_completion
+    name: GPT-4o Mini
+    description: GPT-4o ning eng arzon va tez versiyasi. Oddiy vazifalar uchun ideal.
+
+    price_per_1000_input_tokens: 0.00015
+    price_per_1000_output_tokens: 0.0006
+
+    scores:
+      Smart: 4
+      Fast: 5
+      Cheap: 5
 
   davinci:
     type: completion
