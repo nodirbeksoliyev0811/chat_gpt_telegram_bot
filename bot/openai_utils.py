@@ -18,8 +18,6 @@ OTHER_MODEL_OPTIONS = {
     "temperature": 0.7,
     "max_tokens": 2048,
     "top_p": 1,
-    "frequency_penalty": 0.1,
-    "presence_penalty": 0.1,
 }
 
 GPT5_OPTIONS = {
