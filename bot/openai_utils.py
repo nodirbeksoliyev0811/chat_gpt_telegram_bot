@@ -29,7 +29,7 @@ GPT5_OPTIONS = {
     "frequency_penalty": 0.1,
     "presence_penalty": 0.1,
     "max_completion_tokens": 2048,
-    "reasoning": {"effort": "medium"},
+    "reasoning_effort": "medium",
 }
 
 
