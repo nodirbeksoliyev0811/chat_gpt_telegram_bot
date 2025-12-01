@@ -14,7 +14,7 @@ client = AsyncOpenAI(
 
 logger = logging.getLogger(__name__)
 
-OPENAI_COMPLETION_OPTIONS = {
+OTHER_MODEL_OPTIONS = {
     "temperature": 0.7,
     "max_completion_tokens": 2048,
     "max_tokens": 2048,
@@ -23,12 +23,26 @@ OPENAI_COMPLETION_OPTIONS = {
     "presence_penalty": 0.1,
 }
 
+GPT5_OPTIONS = {
+    "temperature": 0.6,
+    "top_p": 1,
+    "frequency_penalty": 0.1,
+    "presence_penalty": 0.1,
+    "max_completion_tokens": 2048,
+    "reasoning": {"effort": "medium"},
+}
+
 
 
 class ChatGPT:
+    def _get_options(self):
+        if self.model.startswith("gpt-5"):
+            return GPT5_OPTIONS
+        return OTHER_MODEL_OPTIONS
+    
     def __init__(self, model="gpt-3.5-turbo"):
         assert model in {
-            "gpt-5",
+            "gpt-5.1",
             "gpt-4-vision-preview", 
             "gpt-4-turbo-preview",
             "gpt-4", 
@@ -38,7 +52,6 @@ class ChatGPT:
             "gpt-3.5-turbo", 
         }, f"Unknown model: {model}"
         self.model = model
-        if(model.startswith("gpt-5")): OPENAI_COMPLETION_OPTIONS.update({"reasoning" : { "effort": "high" }})
         
 
     async def send_message(self, message, dialog_messages=[], chat_mode="assistant"):
@@ -55,7 +68,7 @@ class ChatGPT:
                 response = await client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    **OPENAI_COMPLETION_OPTIONS
+                    **self._get_options()
                 )
                 
                 answer = response.choices[0].message.content
@@ -90,7 +103,7 @@ class ChatGPT:
                     model=self.model,
                     messages=messages,
                     stream=True,
-                    **OPENAI_COMPLETION_OPTIONS
+                    **self._get_options()
                 )
 
                 answer = ""
@@ -136,7 +149,7 @@ class ChatGPT:
                 response = await client.chat.completions.create(
                     model=self.model,
                     messages=messages,
-                    **OPENAI_COMPLETION_OPTIONS
+                    **self._get_options()
                 )
                 
                 answer = response.choices[0].message.content
@@ -176,7 +189,7 @@ class ChatGPT:
                     model=self.model,
                     messages=messages,
                     stream=True,
-                    **OPENAI_COMPLETION_OPTIONS
+                    **self._get_options()
                 )
 
                 answer = ""
