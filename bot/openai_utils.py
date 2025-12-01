@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 OTHER_MODEL_OPTIONS = {
     "temperature": 0.7,
-    "max_completion_tokens": 2048,
     "max_tokens": 2048,
     "top_p": 1,
     "frequency_penalty": 0.1,
@@ -26,8 +25,6 @@ OTHER_MODEL_OPTIONS = {
 GPT5_OPTIONS = {
     "temperature": 0.6,
     "top_p": 1,
-    "frequency_penalty": 0.1,
-    "presence_penalty": 0.1,
     "max_completion_tokens": 2048,
     "reasoning_effort": "medium",
 }
