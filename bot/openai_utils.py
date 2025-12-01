@@ -21,8 +21,6 @@ OTHER_MODEL_OPTIONS = {
 }
 
 GPT5_OPTIONS = {
-    "temperature": 0.6,
-    "top_p": 1,
     "max_completion_tokens": 2048,
     "reasoning_effort": "medium",
 }
