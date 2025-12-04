@@ -18,6 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.enums import ParseMode, ChatAction
 from aiogram.client.default import DefaultBotProperties
 from aiogram.utils.backoff import BackoffConfig
+from chatgpt_md_converter import telegram_format
 
 import config
 import database
@@ -479,7 +480,7 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
                     continue
 
                 try:
-                    await placeholder.edit_text(answer)
+                    await placeholder.edit_text(telegram_format(answer), parse_mode= ParseMode.HTML)
                 except Exception:
                     pass
 
@@ -603,7 +604,7 @@ async def process_vision_message(message: Message, use_new_dialog_timeout: bool 
                 continue
 
             try:
-                await placeholder.edit_text(answer)
+                await placeholder.edit_text(telegram_format(answer), parse_mode= ParseMode.HTML)
             except:
                 pass
 
