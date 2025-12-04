@@ -26,7 +26,6 @@ GPT5_OPTIONS = {
 }
 
 
-
 class ChatGPT:
     def _get_options(self):
         if self.model.startswith("gpt-5"):
@@ -36,7 +35,6 @@ class ChatGPT:
     def __init__(self, model="gpt-3.5-turbo"):
         assert model in {
             "gpt-5.1",
-            "gpt-4-vision-preview", 
             "gpt-4-turbo-preview",
             "gpt-4", 
             "gpt-4o",
@@ -259,7 +257,10 @@ class ChatGPT:
         return answer
 
     def _count_tokens_from_messages(self, messages, answer, model="gpt-3.5-turbo"):
-        encoding = tiktoken.encoding_for_model("cl100k_base" if model.startswith("gpt-5") else model)
+        if model.startswith("gpt-5"):
+            encoding = tiktoken.get_encoding("cl100k_base")
+        else:
+            encoding = tiktoken.encoding_for_model(model)
 
         tokens_per_message = 3
         tokens_per_name = 1

@@ -511,7 +511,7 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
     async with user_locks[user_id]:
         try:
             if message.photo:
-                if current_model not in ["gpt-4o", "gpt-4-vision-preview"]:
+                if current_model not in ["gpt-4o"]:
                     db.set_user_attribute(user_id, "current_model", "gpt-4o")
                     current_model = "gpt-4o"
                 task = asyncio.create_task(process_vision_message(message, use_new_dialog_timeout))
@@ -548,8 +548,8 @@ async def process_vision_message(message: Message, use_new_dialog_timeout: bool 
     user_id = message.from_user.id
     current_model = db.get_user_attribute(user_id, "current_model")
 
-    if current_model not in ["gpt-4-vision-preview", "gpt-4o"]:
-        await message.answer("❌ Rasm faqat GPT-4 Vision/GPT-4o modellarda qo'llab-quvvatlanadi\n/settings da modelni o'zgartiring")
+    if current_model not in ["gpt-4o"]:
+        await message.answer("❌ Rasm faqat GPT-4o modellarda qo'llab-quvvatlanadi\n/settings da modelni o'zgartiring")
         return
 
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")

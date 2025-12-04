@@ -1,6 +1,5 @@
 available_text_models: [
   "gpt-5.1",
-  "gpt-4-vision-preview", 
   "gpt-4-turbo-preview",
   "gpt-4", 
   "gpt-4o",
@@ -53,19 +52,6 @@ info:
     type: chat_completion
     name: GPT-4 Turbo
     description: GPT-4 Turbo GPT-4ning <b>tezroq</b> va <b>arzonroq</b> versiyasi. U GPT-4 kabi aqlli, yaxshiroq tushunish, ko‘proq analitik qobiliyat, noaniq savollarni aniqroq hal qiladi.
-
-    price_per_1000_input_tokens: 0.01
-    price_per_1000_output_tokens: 0.03
-
-    scores:
-      Aqlli: 5
-      Tezkor: 4
-      Arzon: 3
-
-  gpt-4-vision-preview:
-    type: chat_completion
-    name: GPT-4 Vision
-    description: Rasmlarni <b>tushunish</b> qobiliyatiga ega, GPT-4 Turbo funksiyalarining barchasini ishlatadi.
 
     price_per_1000_input_tokens: 0.01
     price_per_1000_output_tokens: 0.03
