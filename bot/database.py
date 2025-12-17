@@ -6,7 +6,6 @@ from datetime import datetime
 
 import config
 
-
 class Database:
     def __init__(self):
         self.client = pymongo.MongoClient(config.mongodb_uri)
@@ -14,6 +13,7 @@ class Database:
 
         self.user_collection = self.db["user"]
         self.dialog_collection = self.db["dialog"]
+        # self.allowed_users_collection = self.db["allowed_users"]
 
     def check_if_user_exists(self, user_id: int, raise_exception: bool = False):
         if self.user_collection.count_documents({"_id": user_id}) > 0:
@@ -128,3 +128,34 @@ class Database:
             {"_id": dialog_id, "user_id": user_id},
             {"$set": {"messages": dialog_messages}}
         )
+
+    # def add_allowed_user(
+    #     self,
+    #     username: str,
+    #     user_full_name: str,
+    #     phone_number: Optional[str] = None,
+    # ):
+    #     if self.allowed_users_collection.count_documents({"username": username}) > 0:
+    #         return False  # allaqachon mavjud
+
+    #     user_dict = {
+    #         "username": username,
+    #         "user_full_name": user_full_name,
+    #         "phone_number": phone_number,
+    #         "created_at": datetime.now(),
+    #     }
+
+    #     self.allowed_users_collection.insert_one(user_dict)
+    #     return True
+    
+    # def remove_allowed_user(self, username: str):
+    #     result = self.allowed_users_collection.delete_one({"username": username})
+    #     return result.deleted_count > 0
+
+    # def get_allowed_user(self, username: str) -> Optional[dict]:
+    #     if(self.allowed_users_collection.count_documents({"username": username}) == 0):
+    #         return None
+    #     return self.allowed_users_collection.find_one(
+    #         {"username": username},
+    #         {"_id": 0}
+    #     )
