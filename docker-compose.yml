@@ -19,6 +19,9 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - mongo
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
   # mongo_express:
   #   container_name: mongo-express
   #   image: mongo-express:latest

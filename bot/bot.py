@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import traceback
+import re
 from datetime import datetime
 from io import BytesIO
 import base64
@@ -18,11 +19,21 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.enums import ParseMode, ChatAction
 from aiogram.client.default import DefaultBotProperties
 from aiogram.utils.backoff import BackoffConfig
+from aiogram.exceptions import TelegramBadRequest
 from chatgpt_md_converter import telegram_format
+
 
 import config
 import database
 import openai_utils
+
+import file_utils
+import pptx_utils
+
+
+import json
+import re
+
 
 # ==========================================
 # SETUP
@@ -37,11 +48,69 @@ dp = Dispatcher(storage=storage)
 router = Router()
 user_locks = {}
 user_tasks = {}
+BOT_USER = None
+
+def split_text_smart(text: str, limit: int = 2500) -> list[str]:
+    """Matnni paragraflar va yangi qatorlar bo'yicha aqlli bo'laklash"""
+    chunks = []
+    current_chunk = ""
+    
+    # 1. Paragraflar bo'yicha bo'lish (eng mantiqiy bo'linish)
+    paragraphs = text.split('\n\n')
+    
+    for para in paragraphs:
+        # Agar joriy chunk + yangi paragraf limitdan oshmasa
+        if len(current_chunk) + len(para) + 2 <= limit:
+            current_chunk += para + "\n\n"
+        else:
+            # Agar joriy chunk bo'sh bo'lmasa, uni saqlaymiz
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = ""
+            
+            # Agar paragrafning o'zi limitdan katta bo'lsa (masalan uzun kod)
+            if len(para) > limit:
+                # Uni qatorlar bo'yicha bo'lamiz
+                lines = para.split('\n')
+                for line in lines:
+                    if len(current_chunk) + len(line) + 1 <= limit:
+                        current_chunk += line + "\n"
+                    else:
+                        chunks.append(current_chunk.strip())
+                        current_chunk = line + "\n"
+            else:
+                current_chunk = para + "\n\n"
+                
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+        
+    return chunks
 
 # ==========================================
 # HELPER FUNCTIONS
 # ==========================================
+def clean_html_for_telegram(text: str) -> str:
+    """Telegram qo'llamaydigan HTML teglarni tozalash (chatgpt_md_converter ba'zan body/html qo'shib yuboradi)"""
+    # Remove containers
+    invalid_tags = ["<html>", "</html>", "<body>", "</body>", "<head>", "</head>"]
+    for tag in invalid_tags:
+        text = text.replace(tag, "")
+    
+    # Replace block tags
+    text = text.replace("<p>", "").replace("</p>", "\n")
+    text = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+    text = text.replace("<div>", "").replace("</div>", "\n")
+    
+    return text
+
+async def send_reply(message: Message, text: str, parse_mode=None):
+    """Guruhda reply, shaxsiyda oddiy xabar"""
+    if message.chat.type in ["group", "supergroup"]:
+        return await message.reply(text, parse_mode=parse_mode)
+    return await message.answer(text, parse_mode=parse_mode)
+
 async def register_user_if_not_exists(message: Message):
+
     try:
         user = message.from_user
         chat_id = message.chat.id
@@ -286,6 +355,11 @@ async def set_chat_mode_callback(callback: CallbackQuery):
     await callback.answer()
     
     try:
+        await callback.message.delete()
+    except:
+        pass
+    
+    try:
         user_id = callback.from_user.id
         chat_mode = callback.data.split(":")[1]
 
@@ -434,7 +508,18 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
         await generate_image(message, text or message.text)
         return
 
+
+    # Presentatsiya (faqat assistant rejimida)
+    # Regex: "presentatsiya" yoki "slayd" va "tayyorla" yoki "yarat" so'zlari qatnashsa
+    _msg_text = (text or message.text).lower()
+    if chat_mode == "assistant" and re.search(r"(presentatsiya|slayd|prezentatsiya).*(tayyorla|yarat|qil)", _msg_text):
+        await message.reply("📊 Presentatsiya strukturasini tuzib, fayl yaratayapman... ⏳")
+        await generate_presentation_handler(message, text or message.text)
+        return
+
+
     current_model = db.get_user_attribute(user_id, "current_model")
+
 
     async def message_task():
         if use_new_dialog_timeout:
@@ -450,15 +535,25 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
         n_input_tokens, n_output_tokens = 0, 0
 
         try:
-            placeholder = await message.answer("✏️")
+            placeholder = await send_reply(message, "✏️", parse_mode=None)
             await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+
+
 
             _text = text or message.text
             if not _text:
                 await message.answer("❌ Bo'sh xabar")
                 return
 
+            # Agar guruhda bo'lsa va boshqa user xabariga reply qilingan bo'lsa, kontekstni qo'shish
+            if message.chat.type in ["group", "supergroup"] and message.reply_to_message:
+                if BOT_USER and message.reply_to_message.from_user.id != BOT_USER.id:
+                    # Agar xabar reply bo'lsa (lekin botga emas), reply qilingan xabarni kontekstga qo'shamiz
+                    reply_text = message.reply_to_message.text or message.reply_to_message.caption or "[Rasm/Fayl]"
+                    _text = f"Foydalanuvchi quyidagi xabarga javob bermoqda:\n'''{reply_text}'''\n\nFoydalanuvchi savoli:\n{_text}"
+
             dialog_messages = db.get_dialog_messages(user_id)
+
             
             chatgpt = openai_utils.ChatGPT(model=current_model)
             
@@ -472,27 +567,73 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
                     yield "finished", answer, (n_input_tokens, n_output_tokens), n_removed
                 gen = fake_gen()
 
+            full_answer = ""
             prev_answer = ""
             async for status, answer, (n_input_tokens, n_output_tokens), n_removed in gen:
-                answer = answer[:4096]
+                full_answer = answer
                 
-                if abs(len(answer) - len(prev_answer)) < 100 and status != "finished":
+                # Streaming uchun qisqartirilgan versiya
+                if len(answer) > 4000:
+                    display_answer = answer[:4000] + "..."
+                else:
+                    display_answer = answer
+                
+                if abs(len(display_answer) - len(prev_answer)) < 100 and status != "finished":
                     continue
 
                 try:
-                    await placeholder.edit_text(telegram_format(answer), parse_mode= ParseMode.HTML)
+                    formatted_display = clean_html_for_telegram(telegram_format(display_answer))
+                    await placeholder.edit_text(formatted_display, parse_mode= ParseMode.HTML)
                 except Exception:
                     pass
 
-                await asyncio.sleep(0.01)
-                prev_answer = answer
+
+                await asyncio.sleep(0.7)
+                prev_answer = display_answer
+
             
-            # Save dialog
+            # Yakuniy javobni bo'laklab yuborish
+            # |---| yoki yangi qatordagi ---
+            split_pattern = r'\|\s*-{3,}\s*\||\n\s*-{3,}\s*\n'
+            if re.search(split_pattern, full_answer):
+                chunks = [c.strip() for c in re.split(split_pattern, full_answer) if c.strip()]
+            else:
+                chunks = split_text_smart(full_answer)
+
+
+
+            
+            # Birinchi bo'lak (placeholder o'rniga)
+            try:
+                formatted = clean_html_for_telegram(telegram_format(chunks[0]))
+                await placeholder.edit_text(formatted, parse_mode=ParseMode.HTML)
+            except TelegramBadRequest as e:
+                if "message is not modified" in str(e):
+                    pass # Formatlash to'g'ri, shunchaki o'zgartirish shart emas
+                else:
+                    await placeholder.edit_text(chunks[0], parse_mode=None) # Boshqa xato (masalan parse error)
+            except Exception:
+                await placeholder.edit_text(chunks[0], parse_mode=None) # Fallback
+
+            
+            # Qolgan bo'laklar
+            for chunk in chunks[1:]:
+                await asyncio.sleep(0.1) # Tartibni saqlash uchun
+                try:
+                    formatted = clean_html_for_telegram(telegram_format(chunk))
+                    await send_reply(message, formatted, parse_mode=ParseMode.HTML)
+                except Exception:
+                    await send_reply(message, chunk, parse_mode=None) # Fallback without formatting
+
+
+            
+            # Save dialog (full text)
             new_msg = {
                 "user": [{"type": "text", "text": _text}],
-                "bot": answer,
+                "bot": full_answer,
                 "date": datetime.now()
             }
+
             db.set_dialog_messages(user_id, db.get_dialog_messages(user_id) + [new_msg])
             db.update_n_used_tokens(user_id, current_model, n_input_tokens, n_output_tokens)
 
@@ -539,7 +680,20 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
 async def text_message_handler(message: Message):
     if not is_user_allowed(message.from_user.id):
         return
+
+    # Guruhda ishlayotganligini tekshirish
+    if message.chat.type in ["group", "supergroup"]:
+        # Agar botga reply qilinmagan bo'lsa va bot username message ichida bo'lmasa, e'tiborsiz qoldirish
+        if BOT_USER:
+            is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == BOT_USER.id
+            is_mentioned = BOT_USER.username in message.text
+
+            if not is_reply_to_bot and not is_mentioned:
+                return
+
+
     await process_message(message)
+
 
 
 # ==========================================
@@ -575,8 +729,10 @@ async def process_vision_message(message: Message, use_new_dialog_timeout: bool 
         buf.seek(0)
 
     try:
-        placeholder = await message.answer("🖼️ Rasmni tahlil qilyapman...")
+        placeholder = await send_reply(message, "🖼️ Rasmni tahlil qilyapman...", parse_mode=None)
         text = message.caption or "Bu rasmni tahlil qil!"
+
+
 
         await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
 
@@ -596,20 +752,62 @@ async def process_vision_message(message: Message, use_new_dialog_timeout: bool 
                 yield "finished", answer, (n_in, n_out), n_removed
             gen = fake_gen()
 
+        full_answer = ""
         prev_answer = ""
         async for status, answer, (n_in, n_out), n_removed in gen:
-            answer = answer[:4096]
+            full_answer = answer
             
-            if abs(len(answer) - len(prev_answer)) < 100 and status != "finished":
+            if len(answer) > 4000:
+                display_answer = answer[:4000] + "..."
+            else:
+                display_answer = answer
+
+            if abs(len(display_answer) - len(prev_answer)) < 100 and status != "finished":
                 continue
 
             try:
-                await placeholder.edit_text(telegram_format(answer), parse_mode= ParseMode.HTML)
-            except:
+                formatted_display = clean_html_for_telegram(telegram_format(display_answer))
+                await placeholder.edit_text(formatted_display, parse_mode= ParseMode.HTML)
+            except Exception:
                 pass
 
-            await asyncio.sleep(0.01)
-            prev_answer = answer
+            await asyncio.sleep(0.7)
+            prev_answer = display_answer
+
+
+        # Yakuniy javobni bo'laklab yuborish
+        split_pattern = r'\|\s*-{3,}\s*\||\n\s*-{3,}\s*\n'
+        if re.search(split_pattern, full_answer):
+            chunks = [c.strip() for c in re.split(split_pattern, full_answer) if c.strip()]
+        else:
+            chunks = split_text_smart(full_answer)
+
+
+
+        
+        try:
+            formatted = clean_html_for_telegram(telegram_format(chunks[0]))
+            await placeholder.edit_text(formatted, parse_mode=ParseMode.HTML)
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e):
+                pass
+            else:
+                await placeholder.edit_text(chunks[0], parse_mode=None)
+        except Exception:
+            await placeholder.edit_text(chunks[0], parse_mode=None)
+
+
+        for chunk in chunks[1:]:
+            await asyncio.sleep(0.1)
+            try:
+                formatted = clean_html_for_telegram(telegram_format(chunk))
+                await send_reply(message, formatted, parse_mode=ParseMode.HTML)
+            except Exception:
+                await send_reply(message, chunk, parse_mode=None)
+
+
+
+
 
         # Save
         if buf:
@@ -617,15 +815,16 @@ async def process_vision_message(message: Message, use_new_dialog_timeout: bool 
             base_img = base64.b64encode(buf.getvalue()).decode("utf-8")
             new_msg = {
                 "user": [{"type": "text", "text": text}, {"type": "image", "image": base_img}],
-                "bot": answer,
+                "bot": full_answer,
                 "date": datetime.now()
             }
         else:
             new_msg = {
                 "user": [{"type": "text", "text": text}],
-                "bot": answer,
+                "bot": full_answer,
                 "date": datetime.now()
             }
+
         
         db.set_dialog_messages(user_id, db.get_dialog_messages(user_id) + [new_msg])
         db.update_n_used_tokens(user_id, current_model, n_in, n_out)
@@ -639,8 +838,76 @@ async def process_vision_message(message: Message, use_new_dialog_timeout: bool 
 async def photo_handler(message: Message):
     if not is_user_allowed(message.from_user.id):
         return
+    
+    # Guruhda ishlayotganligini tekshirish
+    if message.chat.type in ["group", "supergroup"]:
+        if BOT_USER:
+            is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == BOT_USER.id
+            is_mentioned = message.caption and BOT_USER.username in message.caption
+
+            if not is_reply_to_bot and not is_mentioned:
+                return
+
+
     await register_user_if_not_exists(message)
     await process_message(message)
+
+
+# ==========================================
+# FILE HANDLER
+# ==========================================
+@router.message(F.document)
+async def document_handler(message: Message):
+    """Fayllarni o'qish (PDF, DOCX, TXT)"""
+    if not is_user_allowed(message.from_user.id):
+        return
+
+    # Guruhda ishlash
+    if message.chat.type in ["group", "supergroup"]:
+        if BOT_USER:
+            is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == BOT_USER.id
+            is_mentioned = message.caption and BOT_USER.username in message.caption
+            if not is_reply_to_bot and not is_mentioned:
+                return
+
+    doc = message.document
+    file_id = doc.file_id
+    file_name = doc.file_name or "file"
+    file_ext = file_name.split(".")[-1] if "." in file_name else ""
+
+    if not file_ext:
+        await message.reply("❌ Fayl formati aniqlanmadi")
+        return
+
+    wait_msg = await message.reply(f"📂 <b>{file_name}</b> tahlil qilinmoqda...")
+    await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+
+
+    try:
+        # Download
+        file = await bot.get_file(file_id)
+        file_buffer = BytesIO()
+        await bot.download_file(file.file_path, file_buffer)
+        file_buffer.seek(0)
+
+        # Extract text
+        text_content = file_utils.extract_text(file_buffer, file_ext)
+
+        if text_content:
+            # Promptga qo'shish
+            user_input = message.caption or "Ushbu faylni tahlil qiling va qisqacha mazmunini ayting."
+            prompt = f"Men quyidagi faylni yukladim: {file_name}\n\nFayl mazmuni (boshi):\n'''{text_content[:15000]}'''\n...\n\nFoydalanuvchi so'rovi: {user_input}"
+            
+            await wait_msg.delete()
+            await process_message(message, text=prompt)
+        else:
+            await wait_msg.edit_text("❌ Faylni o'qib bo'lmadi.\nSabablar:\n1. Fayl bo'sh yoki shifrlangan.\n2. PDF rasmlardan iborat (matn qatlami yo'q).\n3. Noma'lum format.")
+            
+    except Exception as e:
+        logger.error(f"File error: {e}")
+        await wait_msg.edit_text("❌ Faylni yuklashda xatolik")
+
+
 
 
 # ==========================================
@@ -665,7 +932,8 @@ async def voice_handler(message: Message):
 
     # Transcribe
     transcribed = await openai_utils.transcribe_audio(buf)
-    await message.answer(f"🎤 <i>{transcribed}</i>")
+    await message.reply(f"🎤 <i>{transcribed}</i>")
+
 
     # Update stats
     current = db.get_user_attribute(user_id, "n_transcribed_seconds")
@@ -673,7 +941,17 @@ async def voice_handler(message: Message):
     db.set_user_attribute(user_id, "n_transcribed_seconds", duration + current)
 
     # Process
+    if message.chat.type in ["group", "supergroup"]:
+        if BOT_USER:
+            is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user.id == BOT_USER.id
+            
+            # Ovozli xabarda mention bo'lmaydi, faqat reply ga qarab ishlaymiz
+            if not is_reply_to_bot:
+                return
+
+
     await process_message(message, text=transcribed)
+
 
 
 # ==========================================
@@ -701,9 +979,70 @@ async def generate_image(message: Message, prompt: str):
     current = db.get_user_attribute(user_id, "n_generated_images")
     db.set_user_attribute(user_id, "n_generated_images", config.return_n_generated_images + current)
 
-    # Send
     for url in image_urls:
         await bot.send_photo(chat_id=message.chat.id, photo=url)
+
+
+async def generate_presentation_handler(message: Message, prompt: str):
+    """Presentatsiya yaratish"""
+    user_id = message.from_user.id
+    current_model = db.get_user_attribute(user_id, "current_model")
+
+    # Promptni tayyorlash
+    system_prompt = (
+        f"Siz professional taqdimot mutaxassisisiz. Foydalanuvchi so'roviga asoslanib, slaydlar mazmunini tayyorlang.\n"
+        f"Mavzu: {prompt}\n\n"
+        f"Talab: Javobni FAQAT quyidagi JSON formatda qaytaring (hech qanday markdown, ```json``` yoki qo'shimcha so'zlar bo'lmasin, faqat toza JSON matni):\n"
+        f"[\n"
+        f'  {{"title": "Taqdimot Sarlavhasi", "content": "Kirish so\'zlari..."}},\n'
+        f'  {{"title": "1-slayd sarlavhasi", "content": "- Asosoiy fikr 1\\n- Asosiy fikr 2"}},\n'
+        f"  ...\n"
+        f"]\n"
+        f"Kamida 5 ta slayd bo'lsin. Til: O'zbek tili (yoki so'rov tilida)."
+    )
+
+    try:
+        await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.UPLOAD_DOCUMENT)
+        
+        # Biz dialog tarixini yubormaymiz, faqat shuni so'raymiz
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        response = await openai_utils.client.chat.completions.create(
+            model="gpt-3.5-turbo", # JSON uchun gpt-3.5 yetarli va tezroq
+            messages=messages,
+            temperature=0.7
+        )
+        
+        answer = response.choices[0].message.content
+        
+        # JSON tozalash (ba'zan ```json ... ``` keladi)
+        if "```json" in answer:
+            answer = answer.split("```json")[1].split("```")[0]
+        elif "```" in answer:
+            answer = answer.split("```")[1].split("```")[0]
+            
+        slides_data = json.loads(answer.strip())
+        
+        if not isinstance(slides_data, list):
+            raise ValueError("GPT JSON ro'yxat qaytarmadi")
+
+        # PPTX yaratish
+        ppt_buffer = await pptx_utils.create_presentation(prompt[:50], slides_data)
+        
+        if ppt_buffer:
+            from aiogram.types import BufferedInputFile
+            input_file = BufferedInputFile(ppt_buffer.getvalue(), filename=ppt_buffer.name)
+            await message.answer_document(document=input_file, caption="✅ <b>Presentatsiya tayyor!</b>")
+        else:
+            await message.answer("❌ Fayl yaratishda xatolik bo'ldi.")
+
+    except json.JSONDecodeError:
+        logger.error(f"JSON Error: {answer}")
+        await message.answer("❌ GPT javobini o'qib bo'lmadi (JSON error). Qaytadan urinib ko'ring.")
+    except Exception as e:
+        logger.error(f"PPTX Error: {e}")
+        await message.answer(f"❌ Xatolik: {e}")
+
 
 
 # ==========================================
@@ -723,7 +1062,10 @@ async def set_commands():
 
 async def main():
     dp.include_router(router)
+    global BOT_USER
+    BOT_USER = await bot.get_me()
     await set_commands()
+
     try:
         await dp.start_polling(
             bot, 
