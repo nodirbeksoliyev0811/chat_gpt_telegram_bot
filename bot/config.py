@@ -33,8 +33,14 @@ allowed_telegram_usernames = config_yaml.get("allowed_telegram_usernames", [])
 new_dialog_timeout = config_yaml.get("new_dialog_timeout", 600)
 enable_message_streaming = config_yaml.get("enable_message_streaming", True)
 return_n_generated_images = config_yaml.get("return_n_generated_images", 1)
-image_size = config_yaml.get("image_size", "512x512")
+image_size = config_yaml.get("image_size", "1024x1024")
 n_chat_modes_per_page = config_yaml.get("n_chat_modes_per_page", 5)
+
+image_provider = config_yaml.get("image_provider", "dall-e-3")
+google_api_key = os.getenv("GOOGLE_API_KEY") or config_yaml.get("google_api_key", None)
+
+
+
 
 # MongoDB
 mongodb_uri = os.getenv("MONGO_URL")

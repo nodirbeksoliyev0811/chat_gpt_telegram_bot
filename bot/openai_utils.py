@@ -308,10 +308,33 @@ async def transcribe_audio(audio_file) -> str:
         return ""
 
 
-async def generate_images(prompt, n_images=1, size="512x512"):
+async def generate_dalle_prompt(image_buffer, user_instruction):
+    base64_image = base64.b64encode(image_buffer.getvalue()).decode('utf-8')
+    
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": f"Sizning vazifangiz DALL-E 3 uchun prompt yozish orqali ORIGINAL RASMNI QAYTA TIKLASH (Recreate). Rasmning har bir detali, uslubi, yorug'ligi, yuz tuzilishi va kompozitsiyasi original bilan IDENTIK (bir xil) bo'lishi shart.\n\nFAQAT quyidagi o'zgarishni kiriting: '{user_instruction}'.\n\nQolgan barcha narsani originaldan ko'chirib yozing. Prompt juda batafsil bo'lsin."},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+            ]
+        }
+
+    ]
+    
+    response = await client.chat.completions.create(
+        model="gpt-4o",
+        messages=messages,
+        max_tokens=500
+    )
+    return response.choices[0].message.content
+
+
+async def generate_images(prompt, n_images=1, size="1024x1024"):
+
     try:
         response = await client.images.generate(
-            model="dall-e-2",
+            model="dall-e-3",
             prompt=prompt,
             n=n_images,
             size=size

@@ -6,7 +6,17 @@ openai_api_base: null
 new_dialog_timeout: 600
 return_n_generated_images: 1
 n_chat_modes_per_page: 5
-image_size: "512x512"
+image_size: "1024x1024"
+
+# image provider settings
+image_provider: "gemini" # options: "dall-e-3", "gemini"
+
+# google_api_key: null (Set via GOOGLE_API_KEY in .env)
+
+
+
+
+
 enable_message_streaming: true
 # prices
 chatgpt_price_per_1000_tokens: 0.002

@@ -12,8 +12,10 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    BotCommand
+    BotCommand,
+    BufferedInputFile
 )
+
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.enums import ParseMode, ChatAction
@@ -26,6 +28,10 @@ from chatgpt_md_converter import telegram_format
 import config
 import database
 import openai_utils
+import gemini_utils
+
+
+
 
 import file_utils
 import pptx_utils
@@ -503,15 +509,31 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
 
     chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
     
-    if chat_mode == "artist":
+    # Rasm so'rovi tekshiruvi (Artistdan boshqa rejimda)
+    if chat_mode != "artist":
+        _text_check = (text or message.text or message.caption or "").lower()
+        if re.search(r"(rasm|surat|tasvir).*(chiz|yarat|yasab|tayyorla)|(draw|generate|create).*(image|picture|photo)", _text_check):
+            await send_reply(message, "🎨 Rasm yaratish uchun <b>Rassom</b> rejimiga o'ting!\n/mode buyrug'ini bosing va Rassom ni tanlang.", parse_mode=ParseMode.HTML)
+            return
+
+    if chat_mode == "artist" and not message.photo:
+
+
+        prompt = text or message.text
+        if not prompt:
+            await message.answer("❌ Rasm yaratish uchun matnli tasvir kiriting!")
+            return
+
         await message.answer("🎨 Rasm yaratilmoqda...")
-        await generate_image(message, text or message.text)
+        await generate_image(message, prompt)
         return
+
 
 
     # Presentatsiya (faqat assistant rejimida)
     # Regex: "presentatsiya" yoki "slayd" va "tayyorla" yoki "yarat" so'zlari qatnashsa
-    _msg_text = (text or message.text).lower()
+    _msg_text = (text or message.text or "").lower()
+
     if chat_mode == "assistant" and re.search(r"(presentatsiya|slayd|prezentatsiya).*(tayyorla|yarat|qil)", _msg_text):
         await message.reply("📊 Presentatsiya strukturasini tuzib, fayl yaratayapman... ⏳")
         await generate_presentation_handler(message, text or message.text)
@@ -676,8 +698,9 @@ async def process_message(message: Message, text: str = None, use_new_dialog_tim
             if user_id in user_tasks:
                 del user_tasks[user_id]
 
-@router.message(F.text & ~F.text.startswith('/'))
+@router.message((F.text & ~F.text.startswith('/')) | F.photo)
 async def text_message_handler(message: Message):
+
     if not is_user_allowed(message.from_user.id):
         return
 
@@ -703,11 +726,15 @@ async def process_vision_message(message: Message, use_new_dialog_timeout: bool 
     user_id = message.from_user.id
     current_model = db.get_user_attribute(user_id, "current_model")
 
+    chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
+
+
+
+
     if current_model not in ["gpt-4o"]:
         await message.answer("❌ Rasm faqat GPT-4o modellarda qo'llab-quvvatlanadi\n/settings da modelni o'zgartiring")
         return
 
-    chat_mode = db.get_user_attribute(user_id, "current_chat_mode")
 
     # Timeout
     if use_new_dialog_timeout:
@@ -727,6 +754,25 @@ async def process_vision_message(message: Message, use_new_dialog_timeout: bool 
         await bot.download_file(file.file_path, buf)
         buf.name = "image.jpg"
         buf.seek(0)
+    
+    if chat_mode == "artist":
+        prompt = message.caption
+        if not prompt:
+            await message.answer("🖼️ Bu rasmni qanday o'zgartirishni xohlaysiz?\nIltimos, rasmga izoh (caption) yozib qayta yuboring.")
+            return
+
+        await message.answer("🎨 GPT-4o Vision rasm va izohingizni tahlil qilib, DALL-E 3 uchun prompt tayyorlamoqda...")
+        
+        try:
+            dalle_prompt = await openai_utils.generate_dalle_prompt(buf, prompt)
+            await message.answer(f"📝 <b>Generatsiya qilingan prompt:</b>\n<i>{dalle_prompt}</i>\n\n🎨 Rasm chizilmoqda...", parse_mode="HTML")
+            await generate_image(message, dalle_prompt)
+        except Exception as e:
+            logger.error(f"Error in artist vision mode: {e}")
+            await message.answer("❌ Xatolik yuz berdi")
+        
+        return
+
 
     try:
         placeholder = await send_reply(message, "🖼️ Rasmni tahlil qilyapman...", parse_mode=None)
@@ -964,23 +1010,49 @@ async def generate_image(message: Message, prompt: str):
     await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.UPLOAD_PHOTO)
 
     try:
-        image_urls = await openai_utils.generate_images(
-            prompt,
-            n_images=config.return_n_generated_images,
-            size=config.image_size
-        )
+        if config.image_provider == "gemini":
+            try:
+                image_urls = await gemini_utils.generate_images(prompt)
+            except Exception as e:
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                    await message.answer("⚠️ Gemini limiti tugadi, DALL-E 3 ga o'tilmoqda...")
+                    image_urls = await openai_utils.generate_images(
+                        prompt,
+                        n_images=config.return_n_generated_images,
+                        size=config.image_size
+                    )
+                else:
+                    raise e
+        else:
+            image_urls = await openai_utils.generate_images(
+                prompt,
+                n_images=config.return_n_generated_images,
+                size=config.image_size
+            )
+
     except Exception as e:
+        logger.error(f"Generate Image Error: {e}")
         if "safety system" in str(e):
             await message.answer("❌ So'rov xavfsizlik talablariga javob bermaydi")
-            return
-        raise
+        elif "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            await message.answer("⚠️ Google Gemini limiti (Quota) tugagan yoki bu model bepul tarifda mavjud emas.\nIltimos, DALL-E 3 ga o'ting.")
+        else:
+            await message.answer(f"❌ Xatolik: {str(e)[:200]}")
+        return
 
     # Stats
     current = db.get_user_attribute(user_id, "n_generated_images")
     db.set_user_attribute(user_id, "n_generated_images", config.return_n_generated_images + current)
 
-    for url in image_urls:
-        await bot.send_photo(chat_id=message.chat.id, photo=url)
+    for item in image_urls:
+
+        if isinstance(item, str):
+            await bot.send_photo(chat_id=message.chat.id, photo=item)
+        else:
+            item.seek(0)
+            input_file = BufferedInputFile(file=item.read(), filename="image.png")
+            await bot.send_photo(chat_id=message.chat.id, photo=input_file)
+
 
 
 async def generate_presentation_handler(message: Message, prompt: str):
